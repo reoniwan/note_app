@@ -1,11 +1,19 @@
 package com.example.mynotesapp
 
+import android.annotation.SuppressLint
 import android.content.Intent
+import android.database.ContentObserver
+import android.database.Cursor
+import android.os.Build
 import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
+import android.os.Handler
+import android.os.HandlerThread
 import android.view.View
+import androidx.annotation.RequiresApi
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.example.mynotesapp.adapter.NoteAdapter
+import com.example.mynotesapp.db.DatabaseContract.NoteColumns.Companion.CONTENT_URI
 import com.example.mynotesapp.db.NoteHelper
 import com.example.mynotesapp.helper.MappingHelper
 import com.google.android.material.snackbar.Snackbar
@@ -40,8 +48,17 @@ class MainActivity : AppCompatActivity() {
             startActivityForResult(intent, NoteAddUpdateActivity.REQUEST_ADD)
         }
 
-        noteHelper = NoteHelper.getInstance(applicationContext)
-        noteHelper.open()
+        val handlerThread = HandlerThread("DataObserver")
+        handlerThread.start()
+        val handler = Handler(handlerThread.looper)
+
+        val myObserver = object: ContentObserver(handler){
+            override fun onChange(self: Boolean) {
+                loadNotesAsync()
+            }
+        }
+
+        contentResolver.registerContentObserver(CONTENT_URI, true, myObserver)
 
         if (savedInstanceState == null){
             loadNotesAsync()
@@ -58,11 +75,12 @@ class MainActivity : AppCompatActivity() {
         outState.putParcelableArrayList(EXTRA_STATE, adapter.listNotes)
     }
 
+
     private fun loadNotesAsync() {
         GlobalScope.launch(Dispatchers.Main) {
             progressbar.visibility = View.VISIBLE
             val deferredNotes = async(Dispatchers.IO) {
-                val cursor = noteHelper.queryAll()
+                val cursor = contentResolver?.query(CONTENT_URI, null, null, null, null) as Cursor
                 MappingHelper.mapCursorToArrayList(cursor)
             }
 
